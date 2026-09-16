@@ -59,6 +59,26 @@ def test_download_report_404_when_missing():
     next(gen, None)
 
 
+def test_download_report_404_when_file_missing_on_disk(tmp_path):
+    missing_path = tmp_path / "borrado.xlsx"
+
+    repo = AsyncMock()
+    repo.get_execution_report.return_value = {
+        "id": 1,
+        "file_name": "borrado.xlsx",
+        "file_path": str(missing_path),
+    }
+
+    gen = make_client(repo)
+    client = next(gen)
+
+    response = client.get("/api/executions/1/reports/1/download")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Archivo no disponible en disco"
+    next(gen, None)
+
+
 def test_download_report_returns_file(tmp_path):
     file_path = tmp_path / "reporte.xlsx"
     file_path.write_bytes(b"contenido")

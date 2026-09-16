@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import FileResponse
 
@@ -58,6 +60,11 @@ async def download_execution_report(
     report = await repo.get_execution_report(execution_id, report_id)
     if report is None:
         raise HTTPException(status_code=404, detail="Archivo no encontrado")
+
+    # La fila puede apuntar a un archivo ya borrado o movido: sin esto
+    # FileResponse falla con un 500 crudo en vez de un 404 limpio.
+    if not Path(report["file_path"]).is_file():
+        raise HTTPException(status_code=404, detail="Archivo no disponible en disco")
 
     return FileResponse(
         path=report["file_path"],
