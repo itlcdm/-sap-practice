@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routers.auth import router as auth_router
 from app.routers.inventory import router as inventory_router
 from app.routers.items import router as items_router
+from app.routers.tasks import router as tasks_router
 from app.routers.warehouses import router as warehouses_router
 from app.services.db_service import db_service
 
@@ -53,4 +54,5 @@ async def health():
 app.include_router(auth_router)
 app.include_router(inventory_router)
 app.include_router(items_router)
+app.include_router(tasks_router)
 app.include_router(warehouses_router)
