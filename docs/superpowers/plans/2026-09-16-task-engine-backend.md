@@ -2197,7 +2197,7 @@ git commit -m "feat: add task execution orchestration service"
 Crear `backend/tests/routers/test_tasks_router.py`:
 
 ```python
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from fastapi.testclient import TestClient
 
@@ -2283,7 +2283,7 @@ def test_create_schedule_registers_job_and_returns_next_run_time():
     repo = AsyncMock()
     repo.get_task.return_value = type("T", (), {"name": "Inventario diario"})()
 
-    scheduler = AsyncMock()
+    scheduler = MagicMock()
     scheduler.get_next_run_time.return_value = None
 
     gen = make_client(repo, scheduler=scheduler)
@@ -2442,7 +2442,7 @@ git commit -m "feat: add tasks router (CRUD, schedule, manual run)"
 Crear `backend/tests/routers/test_executions_router.py`:
 
 ```python
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from fastapi.testclient import TestClient
 
@@ -2466,7 +2466,7 @@ def test_list_schedules_includes_next_run_time():
         {"task_id": 1, "task_name": "Inventario diario", "cron_expression": "0 8 * * *"}
     ]
 
-    scheduler = AsyncMock()
+    scheduler = MagicMock()
     scheduler.get_next_run_time.return_value = None
 
     gen = make_client(repo, scheduler=scheduler)
