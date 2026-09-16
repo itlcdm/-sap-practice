@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers.auth import router as auth_router
+from app.routers.executions import router as executions_router
 from app.routers.inventory import router as inventory_router
 from app.routers.items import router as items_router
 from app.routers.tasks import router as tasks_router
@@ -52,6 +53,7 @@ async def health():
 
 
 app.include_router(auth_router)
+app.include_router(executions_router)
 app.include_router(inventory_router)
 app.include_router(items_router)
 app.include_router(tasks_router)
