@@ -54,84 +54,96 @@ async def continuar_ejecucion(
         await repo.finish_execution(execution_id, "failed", message)
         return
 
-    connection_string = settings.task_sql_connections.get(task.connection_name)
-    if connection_string is None:
-        message = f"Conexión '{task.connection_name}' no configurada"
-        await repo.add_execution_log(execution_id, "error", message)
-        await repo.finish_execution(execution_id, "failed", message)
-        return
-
-    generated_files = []
-
-    for report in task.reports:
-        await repo.add_execution_log(
-            execution_id, "info", f"Ejecutando {report.stored_procedure}"
-        )
-
-        try:
-            columns, rows = await sql_client.fetch_stored_procedure_rows(
-                connection_string, report.stored_procedure
-            )
-        except Exception as exc:
-            message = str(exc)
-            await repo.add_execution_log(
-                execution_id, "error", f"Error ejecutando {report.stored_procedure}: {message}"
-            )
+    # Guarda de último recurso: esta función corre fire-and-forget (via
+    # BackgroundTasks o el scheduler), así que cualquier excepción no prevista
+    # dejaría la fila en 'running' para siempre — y el índice único parcial
+    # idx_task_executions_one_running_per_task impediría volver a ejecutar la
+    # tarea nunca más.
+    try:
+        connection_string = settings.task_sql_connections.get(task.connection_name)
+        if connection_string is None:
+            message = f"Conexión '{task.connection_name}' no configurada"
+            await repo.add_execution_log(execution_id, "error", message)
             await repo.finish_execution(execution_id, "failed", message)
             return
 
-        base_name = report.excel_file_name.rsplit(".", 1)[0]
-        file_name = f"{base_name}_{execution_id}.xlsx"
-        file_path = str(Path(settings.task_output_folder) / file_name)
+        generated_files = []
+
+        for report in task.reports:
+            await repo.add_execution_log(
+                execution_id, "info", f"Ejecutando {report.stored_procedure}"
+            )
+
+            try:
+                columns, rows = await sql_client.fetch_stored_procedure_rows(
+                    connection_string, report.stored_procedure
+                )
+            except Exception as exc:
+                message = str(exc)
+                await repo.add_execution_log(
+                    execution_id, "error", f"Error ejecutando {report.stored_procedure}: {message}"
+                )
+                await repo.finish_execution(execution_id, "failed", message)
+                return
+
+            base_name = report.excel_file_name.rsplit(".", 1)[0]
+            file_name = f"{base_name}_{execution_id}.xlsx"
+            file_path = str(Path(settings.task_output_folder) / file_name)
+
+            try:
+                row_count = excel.generar_excel(columns, rows, report.sheet_name, file_path)
+            except Exception as exc:
+                message = str(exc)
+                await repo.add_execution_log(
+                    execution_id, "error", f"Error generando Excel para {report.stored_procedure}: {message}"
+                )
+                await repo.finish_execution(execution_id, "failed", message)
+                return
+
+            generated_files.append(file_path)
+
+            await repo.add_execution_report(
+                execution_id, report.stored_procedure, file_name, file_path, row_count
+            )
+            await repo.add_execution_log(
+                execution_id, "info", f"Excel generado: {file_name} ({row_count} filas)"
+            )
+
+        subject_template = task.mail_subject_template or DEFAULT_SUBJECT_TEMPLATE
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         try:
-            row_count = excel.generar_excel(columns, rows, report.sheet_name, file_path)
+            subject = subject_template.format(task_name=task.name, timestamp=timestamp)
+        except (KeyError, IndexError, ValueError) as exc:
+            await repo.add_execution_log(
+                execution_id,
+                "warning",
+                f"Plantilla de asunto inválida ('{subject_template}'): {exc}. Se usa la plantilla por defecto.",
+            )
+            subject = DEFAULT_SUBJECT_TEMPLATE.format(task_name=task.name, timestamp=timestamp)
+
+        try:
+            await mailer.enviar_correo_con_adjuntos(
+                to=task.mail_to,
+                cc=task.mail_cc,
+                subject=subject,
+                body=f"Adjunto se envían los reportes generados por la tarea '{task.name}'.",
+                attachments=generated_files,
+            )
         except Exception as exc:
             message = str(exc)
-            await repo.add_execution_log(
-                execution_id, "error", f"Error generando Excel para {report.stored_procedure}: {message}"
-            )
+            await repo.add_execution_log(execution_id, "error", f"Error enviando correo: {message}")
             await repo.finish_execution(execution_id, "failed", message)
             return
 
-        generated_files.append(file_path)
-
-        await repo.add_execution_report(
-            execution_id, report.stored_procedure, file_name, file_path, row_count
-        )
-        await repo.add_execution_log(
-            execution_id, "info", f"Excel generado: {file_name} ({row_count} filas)"
-        )
-
-    subject_template = task.mail_subject_template or DEFAULT_SUBJECT_TEMPLATE
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    try:
-        subject = subject_template.format(task_name=task.name, timestamp=timestamp)
-    except (KeyError, IndexError, ValueError) as exc:
-        await repo.add_execution_log(
-            execution_id,
-            "warning",
-            f"Plantilla de asunto inválida ('{subject_template}'): {exc}. Se usa la plantilla por defecto.",
-        )
-        subject = DEFAULT_SUBJECT_TEMPLATE.format(task_name=task.name, timestamp=timestamp)
-
-    try:
-        await mailer.enviar_correo_con_adjuntos(
-            to=task.mail_to,
-            cc=task.mail_cc,
-            subject=subject,
-            body=f"Adjunto se envían los reportes generados por la tarea '{task.name}'.",
-            attachments=generated_files,
-        )
+        await repo.add_execution_log(execution_id, "info", "Correo enviado correctamente")
+        await repo.finish_execution(execution_id, "success", None)
     except Exception as exc:
         message = str(exc)
-        await repo.add_execution_log(execution_id, "error", f"Error enviando correo: {message}")
+        await repo.add_execution_log(
+            execution_id, "error", f"Error inesperado en la ejecución: {message}"
+        )
         await repo.finish_execution(execution_id, "failed", message)
-        return
-
-    await repo.add_execution_log(execution_id, "info", "Correo enviado correctamente")
-    await repo.finish_execution(execution_id, "success", None)
 
 
 async def ejecutar_tarea(

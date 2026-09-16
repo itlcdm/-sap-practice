@@ -18,6 +18,12 @@ from app.services.task_repository import task_repository
 async def lifespan(app: FastAPI):
     await db_service.connect()
 
+    # Al arrancar el proceso nada puede seguir realmente "running": cualquier
+    # fila en ese estado quedó huérfana de un proceso anterior y, con el índice
+    # único parcial idx_task_executions_one_running_per_task, bloquearía para
+    # siempre toda nueva ejecución (manual o programada) de esa tarea.
+    await task_repository.mark_stale_running_as_failed()
+
     schedules = await task_repository.list_active_schedules()
     for schedule in schedules:
         # Defensa en profundidad: una expresión cron inválida persistida antes

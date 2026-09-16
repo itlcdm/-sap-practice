@@ -270,6 +270,22 @@ async def test_get_running_execution_returns_id_or_none(monkeypatch):
     assert result is None
 
 
+async def test_mark_stale_running_as_failed_updates_all_running_rows(monkeypatch):
+    conn = use_fake_pool(monkeypatch)
+
+    repo = TaskRepository()
+    await repo.mark_stale_running_as_failed()
+
+    assert len(conn.executed) == 1
+    query, args = conn.executed[0]
+    assert "UPDATE task_executions" in query
+    assert "status = 'failed'" in query
+    assert "WHERE status = 'running'" in query
+    assert "Interrumpida por reinicio del servidor" in query
+    assert "finished_at = now()" in query
+    assert args == ()
+
+
 async def test_finish_execution_updates_status(monkeypatch):
     conn = use_fake_pool(monkeypatch)
 

@@ -199,6 +199,18 @@ class TaskRepository:
                 task_id,
             )
 
+    async def mark_stale_running_as_failed(self) -> None:
+        async with db_service.pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE task_executions
+                SET status = 'failed',
+                    error_message = 'Interrumpida por reinicio del servidor',
+                    finished_at = now()
+                WHERE status = 'running'
+                """
+            )
+
     async def finish_execution(self, execution_id: int, status: str, error_message: str | None) -> None:
         async with db_service.pool.acquire() as conn:
             await conn.execute(
