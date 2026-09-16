@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas.tasks import TaskCreate, TaskReportIn
+from app.schemas.tasks import ScheduleIn, TaskCreate, TaskReportIn
 
 
 def _report(sp="ALCONSIT"):
@@ -31,3 +31,19 @@ def test_task_create_rejects_empty_reports():
             mail_to="a@example.com",
             reports=[],
         )
+
+
+def test_schedule_in_accepts_valid_cron_expression():
+    schedule = ScheduleIn(cron_expression="0 8 * * *")
+
+    assert schedule.cron_expression == "0 8 * * *"
+
+
+def test_schedule_in_rejects_out_of_range_cron_value():
+    with pytest.raises(ValidationError):
+        ScheduleIn(cron_expression="99 8 * * *")
+
+
+def test_schedule_in_rejects_cron_with_wrong_field_count():
+    with pytest.raises(ValidationError):
+        ScheduleIn(cron_expression="0 8 *")

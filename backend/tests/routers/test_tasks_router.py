@@ -99,3 +99,22 @@ def test_create_schedule_registers_job_and_returns_next_run_time():
     assert response.status_code == 200
     scheduler.schedule_task.assert_called_once_with(1, "0 8 * * *")
     next(gen, None)
+
+
+def test_create_schedule_rejects_invalid_cron_before_persisting():
+    repo = AsyncMock()
+    repo.get_task.return_value = type("T", (), {"name": "Inventario diario"})()
+
+    scheduler = MagicMock()
+
+    gen = make_client(repo, scheduler=scheduler)
+    client = next(gen)
+
+    response = client.post("/api/tasks/1/schedule", json={"cron_expression": "99 8 * * *"})
+
+    # El validador de ScheduleIn corta el request antes del router, así que la
+    # fila inválida nunca llega a Postgres ni al scheduler en memoria.
+    assert response.status_code == 422
+    repo.upsert_schedule.assert_not_called()
+    scheduler.schedule_task.assert_not_called()
+    next(gen, None)

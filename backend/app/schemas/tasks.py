@@ -1,6 +1,7 @@
 from datetime import datetime
 from typing import Literal
 
+from apscheduler.triggers.cron import CronTrigger
 from pydantic import BaseModel, field_validator
 
 
@@ -60,6 +61,19 @@ class TaskSummary(BaseModel):
 
 class ScheduleIn(BaseModel):
     cron_expression: str
+
+    @field_validator("cron_expression")
+    @classmethod
+    def validar_cron_expression(cls, value: str) -> str:
+        # Se valida con el mismo parser que usa el scheduler
+        # (SchedulerService.schedule_task), para que una expresión inválida
+        # nunca llegue a persistirse en Postgres: pydantic convierte este
+        # ValueError en un 422 antes de tocar el repositorio.
+        try:
+            CronTrigger.from_crontab(value)
+        except ValueError as exc:
+            raise ValueError(f"Expresión cron inválida ('{value}'): {exc}") from exc
+        return value
 
 
 class ScheduleOut(BaseModel):

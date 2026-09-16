@@ -20,7 +20,16 @@ async def lifespan(app: FastAPI):
 
     schedules = await task_repository.list_active_schedules()
     for schedule in schedules:
-        scheduler_service.schedule_task(schedule["task_id"], schedule["cron_expression"])
+        # Defensa en profundidad: una expresión cron inválida persistida antes
+        # de que existiera el validador de ScheduleIn no debe tumbar el arranque
+        # de toda la aplicación.
+        try:
+            scheduler_service.schedule_task(schedule["task_id"], schedule["cron_expression"])
+        except Exception as exc:
+            print(
+                f"No se pudo programar la tarea {schedule['task_id']} "
+                f"con la expresión cron '{schedule['cron_expression']}': {exc}"
+            )
     scheduler_service.start()
 
     yield
