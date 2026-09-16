@@ -123,6 +123,46 @@ class TaskRepository:
 
                 await self._insert_reports(conn, task_id, data.reports)
 
+    async def upsert_schedule(self, task_id: int, cron_expression: str) -> int:
+        async with db_service.pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    "DELETE FROM task_schedules WHERE task_id = $1",
+                    task_id,
+                )
+
+                schedule_id = await conn.fetchval(
+                    """
+                    INSERT INTO task_schedules (task_id, cron_expression, is_active)
+                    VALUES ($1, $2, TRUE)
+                    RETURNING id
+                    """,
+                    task_id,
+                    cron_expression,
+                )
+
+        return schedule_id
+
+    async def delete_schedule(self, task_id: int) -> None:
+        async with db_service.pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM task_schedules WHERE task_id = $1",
+                task_id,
+            )
+
+    async def list_active_schedules(self) -> list[dict]:
+        async with db_service.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT s.task_id AS task_id, t.name AS task_name, s.cron_expression AS cron_expression
+                FROM task_schedules s
+                JOIN tasks t ON t.id = s.task_id
+                WHERE s.is_active AND t.is_active
+                """
+            )
+
+        return [dict(r) for r in rows]
+
     @staticmethod
     async def _insert_reports(conn, task_id: int, reports) -> None:
         for position, report in enumerate(reports):

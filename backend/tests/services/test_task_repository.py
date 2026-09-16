@@ -14,6 +14,7 @@ class _NoOpTransaction:
 class FakeConnection:
     def __init__(self):
         self.executed: list[tuple[str, tuple]] = []
+        self.fetched: list[tuple[str, tuple]] = []
         self.fetchval_results: list = []
         self.fetchrow_results: list = []
         self.fetch_results: list = []
@@ -22,12 +23,15 @@ class FakeConnection:
         self.executed.append((query, args))
 
     async def fetchval(self, query, *args):
+        self.fetched.append((query, args))
         return self.fetchval_results.pop(0) if self.fetchval_results else None
 
     async def fetchrow(self, query, *args):
+        self.fetched.append((query, args))
         return self.fetchrow_results.pop(0) if self.fetchrow_results else None
 
     async def fetch(self, query, *args):
+        self.fetched.append((query, args))
         return self.fetch_results.pop(0) if self.fetch_results else []
 
     def transaction(self):
@@ -183,3 +187,42 @@ async def test_update_task_replaces_reports(monkeypatch):
     assert update_calls[0][1][-1] is False  # is_active = False
     assert len(delete_calls) == 1
     assert len(insert_calls) == 1
+
+
+async def test_upsert_schedule_replaces_existing(monkeypatch):
+    conn = use_fake_pool(monkeypatch)
+    conn.fetchval_results = [5]
+
+    repo = TaskRepository()
+    schedule_id = await repo.upsert_schedule(1, "0 8 * * *")
+
+    assert schedule_id == 5
+    delete_calls = [c for c in conn.executed if "DELETE FROM task_schedules" in c[0]]
+    insert_calls = [c for c in conn.fetched if "INSERT INTO task_schedules" in c[0]]
+    assert len(delete_calls) == 1
+    assert len(insert_calls) == 1
+    assert insert_calls[0][1] == (1, "0 8 * * *")
+
+
+async def test_delete_schedule_deletes_by_task_id(monkeypatch):
+    conn = use_fake_pool(monkeypatch)
+
+    repo = TaskRepository()
+    await repo.delete_schedule(1)
+
+    delete_calls = [c for c in conn.executed if "DELETE FROM task_schedules" in c[0]]
+    assert delete_calls == [("DELETE FROM task_schedules WHERE task_id = $1", (1,))]
+
+
+async def test_list_active_schedules_joins_task_name(monkeypatch):
+    conn = use_fake_pool(monkeypatch)
+    conn.fetch_results = [
+        [{"task_id": 1, "task_name": "Inventario diario", "cron_expression": "0 8 * * *"}]
+    ]
+
+    repo = TaskRepository()
+    schedules = await repo.list_active_schedules()
+
+    assert schedules == [
+        {"task_id": 1, "task_name": "Inventario diario", "cron_expression": "0 8 * * *"}
+    ]
