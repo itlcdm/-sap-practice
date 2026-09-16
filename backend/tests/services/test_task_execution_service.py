@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import asyncpg
 import pytest
@@ -94,8 +94,11 @@ async def test_continuar_ejecucion_success_generates_files_and_sends_one_email(m
     sql_client = AsyncMock()
     sql_client.fetch_stored_procedure_rows.return_value = (["ItemCode"], [("A1",)])
 
-    excel = AsyncMock()
-    excel.generar_excel = AsyncMock(return_value=1)
+    # excel_export.generar_excel es síncrona en producción (se llama sin await),
+    # así que el doble tiene que ser MagicMock: con AsyncMock, row_count sería
+    # una corrutina nunca esperada en vez del entero real.
+    excel = MagicMock()
+    excel.generar_excel.return_value = 1
 
     mailer = AsyncMock()
 
@@ -113,6 +116,12 @@ async def test_continuar_ejecucion_success_generates_files_and_sends_one_email(m
     assert excel.generar_excel.call_count == 2
     mailer.enviar_correo_con_adjuntos.assert_called_once()
     repo.finish_execution.assert_called_once_with(100, "success", None)
+
+    # El row_count que llega a execution_reports es el entero real devuelto por
+    # generar_excel, no una corrutina.
+    assert repo.add_execution_report.call_count == 2
+    row_counts = [c.args[4] for c in repo.add_execution_report.call_args_list]
+    assert row_counts == [1, 1]
 
 
 async def test_continuar_ejecucion_stops_and_marks_failed_on_report_error(monkeypatch):
@@ -183,8 +192,8 @@ async def test_continuar_ejecucion_falls_back_to_default_subject_on_bad_template
     sql_client = AsyncMock()
     sql_client.fetch_stored_procedure_rows.return_value = (["ItemCode"], [("A1",)])
 
-    excel = AsyncMock()
-    excel.generar_excel = AsyncMock(return_value=1)
+    excel = MagicMock()
+    excel.generar_excel.return_value = 1
 
     mailer = AsyncMock()
 
@@ -221,14 +230,41 @@ async def test_continuar_ejecucion_fails_when_connection_name_unknown(monkeypatc
     assert "InventarioDb" in error
 
 
+async def test_continuar_ejecucion_marks_failed_on_unexpected_error(monkeypatch):
+    # Sin la guarda de nivel superior, una excepción fuera de los try/except
+    # internos dejaría la fila en 'running' para siempre y el índice único
+    # parcial impediría volver a ejecutar la tarea.
+    task = FakeTask(reports=[FakeReport("ALCONSIT", "ALCONSIT.xlsx", "ALCONSIT")])
+    repo = make_repo(task=task)
+    repo.add_execution_report.side_effect = RuntimeError("conexión a Postgres caída")
+
+    sql_client = AsyncMock()
+    sql_client.fetch_stored_procedure_rows.return_value = (["ItemCode"], [("A1",)])
+
+    excel = MagicMock()
+    excel.generar_excel.return_value = 1
+
+    mailer = AsyncMock()
+
+    monkeypatch.setattr(
+        "app.services.task_execution_service.settings.task_sql_connections",
+        {"InventarioDb": "DRIVER=x;"},
+    )
+
+    await continuar_ejecucion(100, 1, repo=repo, sql_client=sql_client, excel=excel, mailer=mailer)
+
+    mailer.enviar_correo_con_adjuntos.assert_not_called()
+    repo.finish_execution.assert_called_once_with(100, "failed", "conexión a Postgres caída")
+
+
 async def test_ejecutar_tarea_calls_iniciar_and_continuar(monkeypatch):
     task = FakeTask(reports=[FakeReport("ALCONSIT", "ALCONSIT.xlsx", "ALCONSIT")])
     repo = make_repo(task=task, new_execution_id=200)
 
     sql_client = AsyncMock()
     sql_client.fetch_stored_procedure_rows.return_value = (["ItemCode"], [("A1",)])
-    excel = AsyncMock()
-    excel.generar_excel = AsyncMock(return_value=1)
+    excel = MagicMock()
+    excel.generar_excel.return_value = 1
     mailer = AsyncMock()
 
     import app.services.task_execution_service as module
