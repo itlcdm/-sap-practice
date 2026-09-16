@@ -13,6 +13,9 @@ dist/
 # Subagent-driven-development scratch workspace
 .superpowers/
 
+# Git worktrees
+.worktrees/
+
 # OS
 .DS_Store
 Thumbs.db
