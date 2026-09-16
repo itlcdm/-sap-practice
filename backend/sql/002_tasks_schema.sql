@@ -61,3 +61,6 @@ CREATE INDEX IF NOT EXISTS idx_task_executions_task_id ON task_executions(task_i
 CREATE INDEX IF NOT EXISTS idx_task_executions_status ON task_executions(status);
 CREATE INDEX IF NOT EXISTS idx_execution_reports_execution_id ON execution_reports(execution_id);
 CREATE INDEX IF NOT EXISTS idx_execution_logs_execution_id ON execution_logs(execution_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_task_executions_one_running_per_task
+ON task_executions(task_id) WHERE status = 'running';
