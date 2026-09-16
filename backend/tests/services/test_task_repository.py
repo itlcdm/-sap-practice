@@ -226,3 +226,134 @@ async def test_list_active_schedules_joins_task_name(monkeypatch):
     assert schedules == [
         {"task_id": 1, "task_name": "Inventario diario", "cron_expression": "0 8 * * *"}
     ]
+
+
+async def test_create_execution_returns_id(monkeypatch):
+    conn = use_fake_pool(monkeypatch)
+    conn.fetchval_results = [42]
+
+    repo = TaskRepository()
+    execution_id = await repo.create_execution(1, "manual")
+
+    assert execution_id == 42
+    assert conn.fetched[0][1] == (1, "manual")
+
+
+async def test_get_running_execution_returns_id_or_none(monkeypatch):
+    conn = use_fake_pool(monkeypatch)
+    conn.fetchval_results = [None]
+
+    repo = TaskRepository()
+    result = await repo.get_running_execution(1)
+
+    assert result is None
+
+
+async def test_finish_execution_updates_status(monkeypatch):
+    conn = use_fake_pool(monkeypatch)
+
+    repo = TaskRepository()
+    await repo.finish_execution(42, "failed", "boom")
+
+    assert conn.executed[0][1] == (42, "failed", "boom")
+
+
+async def test_add_execution_report_inserts_row(monkeypatch):
+    conn = use_fake_pool(monkeypatch)
+
+    repo = TaskRepository()
+    await repo.add_execution_report(42, "ALCONSIT", "ALCONSIT_42.xlsx", "/output/ALCONSIT_42.xlsx", 100)
+
+    assert conn.executed[0][1] == (42, "ALCONSIT", "ALCONSIT_42.xlsx", "/output/ALCONSIT_42.xlsx", 100)
+
+
+async def test_add_execution_log_inserts_row(monkeypatch):
+    conn = use_fake_pool(monkeypatch)
+
+    repo = TaskRepository()
+    await repo.add_execution_log(42, "info", "Ejecutando ALCONSIT")
+
+    assert conn.executed[0][1] == (42, "info", "Ejecutando ALCONSIT")
+
+
+async def test_list_executions_maps_rows(monkeypatch):
+    conn = use_fake_pool(monkeypatch)
+    conn.fetch_results = [
+        [
+            {
+                "id": 42,
+                "task_id": 1,
+                "task_name": "Inventario diario",
+                "trigger_type": "manual",
+                "status": "running",
+                "started_at": "2026-01-01T00:00:00+00:00",
+                "finished_at": None,
+                "error_message": None,
+            }
+        ]
+    ]
+
+    repo = TaskRepository()
+    executions = await repo.list_executions(status="running", limit=50, offset=0)
+
+    assert executions[0].id == 42
+    assert executions[0].status == "running"
+
+
+async def test_get_execution_returns_none_when_missing(monkeypatch):
+    conn = use_fake_pool(monkeypatch)
+    conn.fetchrow_results = [None]
+
+    repo = TaskRepository()
+    result = await repo.get_execution(999)
+
+    assert result is None
+
+
+async def test_get_execution_returns_detail_with_reports(monkeypatch):
+    conn = use_fake_pool(monkeypatch)
+    conn.fetchrow_results = [
+        {
+            "id": 42,
+            "task_id": 1,
+            "task_name": "Inventario diario",
+            "trigger_type": "manual",
+            "status": "success",
+            "started_at": "2026-01-01T00:00:00+00:00",
+            "finished_at": "2026-01-01T00:05:00+00:00",
+            "error_message": None,
+        }
+    ]
+    conn.fetch_results = [
+        [{"id": 1, "stored_procedure": "ALCONSIT", "file_name": "ALCONSIT_42.xlsx", "row_count": 100}]
+    ]
+
+    repo = TaskRepository()
+    execution = await repo.get_execution(42)
+
+    assert execution.id == 42
+    assert execution.reports[0].file_name == "ALCONSIT_42.xlsx"
+
+
+async def test_list_execution_logs_maps_rows(monkeypatch):
+    conn = use_fake_pool(monkeypatch)
+    conn.fetch_results = [
+        [{"id": 1, "timestamp": "2026-01-01T00:00:00+00:00", "level": "info", "message": "Ejecutando ALCONSIT"}]
+    ]
+
+    repo = TaskRepository()
+    logs = await repo.list_execution_logs(42)
+
+    assert logs[0].message == "Ejecutando ALCONSIT"
+
+
+async def test_get_execution_report_returns_file_info(monkeypatch):
+    conn = use_fake_pool(monkeypatch)
+    conn.fetchrow_results = [
+        {"id": 1, "file_name": "ALCONSIT_42.xlsx", "file_path": "/output/ALCONSIT_42.xlsx"}
+    ]
+
+    repo = TaskRepository()
+    report = await repo.get_execution_report(42, 1)
+
+    assert report["file_path"] == "/output/ALCONSIT_42.xlsx"

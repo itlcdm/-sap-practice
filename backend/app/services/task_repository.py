@@ -1,4 +1,14 @@
-from app.schemas.tasks import TaskCreate, TaskOut, TaskReportOut, TaskSummary, TaskUpdate
+from app.schemas.tasks import (
+    ExecutionDetailOut,
+    ExecutionLogOut,
+    ExecutionOut,
+    ExecutionReportOut,
+    TaskCreate,
+    TaskOut,
+    TaskReportOut,
+    TaskSummary,
+    TaskUpdate,
+)
 from app.services.db_service import db_service
 
 
@@ -162,6 +172,136 @@ class TaskRepository:
             )
 
         return [dict(r) for r in rows]
+
+    async def create_execution(self, task_id: int, trigger_type: str) -> int:
+        async with db_service.pool.acquire() as conn:
+            return await conn.fetchval(
+                """
+                INSERT INTO task_executions (task_id, trigger_type, status)
+                VALUES ($1, $2, 'running')
+                RETURNING id
+                """,
+                task_id,
+                trigger_type,
+            )
+
+    async def get_running_execution(self, task_id: int) -> int | None:
+        async with db_service.pool.acquire() as conn:
+            return await conn.fetchval(
+                "SELECT id FROM task_executions WHERE task_id = $1 AND status = 'running' LIMIT 1",
+                task_id,
+            )
+
+    async def finish_execution(self, execution_id: int, status: str, error_message: str | None) -> None:
+        async with db_service.pool.acquire() as conn:
+            await conn.execute(
+                """
+                UPDATE task_executions
+                SET status = $2, error_message = $3, finished_at = now()
+                WHERE id = $1
+                """,
+                execution_id,
+                status,
+                error_message,
+            )
+
+    async def add_execution_report(
+        self, execution_id: int, stored_procedure: str, file_name: str, file_path: str, row_count: int
+    ) -> None:
+        async with db_service.pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO execution_reports (execution_id, stored_procedure, file_name, file_path, row_count)
+                VALUES ($1, $2, $3, $4, $5)
+                """,
+                execution_id,
+                stored_procedure,
+                file_name,
+                file_path,
+                row_count,
+            )
+
+    async def add_execution_log(self, execution_id: int, level: str, message: str) -> None:
+        async with db_service.pool.acquire() as conn:
+            await conn.execute(
+                "INSERT INTO execution_logs (execution_id, level, message) VALUES ($1, $2, $3)",
+                execution_id,
+                level,
+                message,
+            )
+
+    async def list_executions(self, status: str | None, limit: int, offset: int) -> list[ExecutionOut]:
+        async with db_service.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT e.id, e.task_id, t.name AS task_name, e.trigger_type, e.status,
+                       e.started_at, e.finished_at, e.error_message
+                FROM task_executions e
+                JOIN tasks t ON t.id = e.task_id
+                WHERE ($1::text IS NULL OR e.status = $1)
+                ORDER BY e.started_at DESC
+                LIMIT $2 OFFSET $3
+                """,
+                status,
+                limit,
+                offset,
+            )
+
+        return [ExecutionOut(**dict(r)) for r in rows]
+
+    async def get_execution(self, execution_id: int) -> ExecutionDetailOut | None:
+        async with db_service.pool.acquire() as conn:
+            execution_row = await conn.fetchrow(
+                """
+                SELECT e.id, e.task_id, t.name AS task_name, e.trigger_type, e.status,
+                       e.started_at, e.finished_at, e.error_message
+                FROM task_executions e
+                JOIN tasks t ON t.id = e.task_id
+                WHERE e.id = $1
+                """,
+                execution_id,
+            )
+
+            if execution_row is None:
+                return None
+
+            report_rows = await conn.fetch(
+                """
+                SELECT id, stored_procedure, file_name, row_count
+                FROM execution_reports WHERE execution_id = $1 ORDER BY id
+                """,
+                execution_id,
+            )
+
+        return ExecutionDetailOut(
+            **dict(execution_row),
+            reports=[ExecutionReportOut(**dict(r)) for r in report_rows],
+        )
+
+    async def list_execution_logs(self, execution_id: int) -> list[ExecutionLogOut]:
+        async with db_service.pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id, timestamp, level, message
+                FROM execution_logs WHERE execution_id = $1 ORDER BY timestamp
+                """,
+                execution_id,
+            )
+
+        return [ExecutionLogOut(**dict(r)) for r in rows]
+
+    async def get_execution_report(self, execution_id: int, report_id: int) -> dict | None:
+        async with db_service.pool.acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                SELECT id, file_name, file_path
+                FROM execution_reports WHERE execution_id = $1 AND id = $2
+                """,
+                execution_id,
+                report_id,
+            )
+
+        return dict(row) if row else None
 
     @staticmethod
     async def _insert_reports(conn, task_id: int, reports) -> None:
