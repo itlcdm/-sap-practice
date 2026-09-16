@@ -20,11 +20,11 @@ class Settings(BaseSettings):
     task_sql_connections: dict[str, str] = {}
     task_output_folder: str = "output"
 
-    mail_from: str = ""
-    mail_smtp_server: str = ""
+    mail_from: str
+    mail_smtp_server: str
     mail_smtp_port: int = 587
-    mail_user: str = ""
-    mail_password: str = ""
+    mail_user: str
+    mail_password: str
 
     model_config = SettingsConfigDict(
         env_file=".env",
