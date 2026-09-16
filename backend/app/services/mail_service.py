@@ -26,9 +26,9 @@ def _send_sync(to: str, cc: str | None, subject: str, body: str, attachments: li
             filename=file_name,
         )
 
-    recipients = [addr.strip() for addr in to.split(",") if addr.strip()]
+    recipients = [addr.strip() for addr in to.replace(";", ",").split(",") if addr.strip()]
     if cc:
-        recipients += [addr.strip() for addr in cc.split(",") if addr.strip()]
+        recipients += [addr.strip() for addr in cc.replace(";", ",").split(",") if addr.strip()]
 
     with smtplib.SMTP(settings.mail_smtp_server, settings.mail_smtp_port) as server:
         server.starttls()
