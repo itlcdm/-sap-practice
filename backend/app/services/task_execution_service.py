@@ -30,10 +30,10 @@ async def iniciar_ejecucion(
 
     try:
         return await repo.create_execution(task_id, trigger_type)
-    except asyncpg.exceptions.UniqueViolationError:
+    except asyncpg.exceptions.UniqueViolationError as exc:
         raise TaskAlreadyRunningError(
             f"La tarea {task_id} ya tiene una ejecución en curso"
-        )
+        ) from exc
 
 
 async def continuar_ejecucion(

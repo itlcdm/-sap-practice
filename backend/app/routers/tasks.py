@@ -99,7 +99,7 @@ async def run_task(
     try:
         execution_id = await iniciar_ejecucion(task_id, "manual", repo=repo)
     except TaskAlreadyRunningError as exc:
-        raise HTTPException(status_code=409, detail=str(exc))
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     background_tasks.add_task(continuar_ejecucion, execution_id, task_id, repo=repo)
 
