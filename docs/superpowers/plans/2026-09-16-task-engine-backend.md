@@ -906,6 +906,67 @@ git commit -m "feat: add TaskRepository CRUD for tasks and reports"
 **Interfaces:**
 - Produces: `TaskRepository.upsert_schedule(task_id, cron_expression) -> int`, `.delete_schedule(task_id) -> None`, `.list_active_schedules() -> list[dict]` (cada dict: `task_id`, `task_name`, `cron_expression`).
 
+- [ ] **Step 0: Agregar seguimiento de lecturas al fixture `FakeConnection`**
+
+Task 5 dejó `FakeConnection.executed` registrando solo llamadas a `execute()`
+(un fix necesario para que su propio primer test pasara, ya que `create_task`
+inserta vía `fetchval`, no `execute`). El test de esta tarea necesita
+verificar una llamada `fetchval` (el INSERT de `upsert_schedule`), así que
+agregar una lista paralela `fetched` que registre `fetchval`/`fetchrow`/`fetch`
+por separado (sin tocar `executed`). En `backend/tests/services/test_task_repository.py`,
+dentro de la clase `FakeConnection`, cambiar:
+
+```python
+    def __init__(self):
+        self.executed: list[tuple[str, tuple]] = []
+        self.fetchval_results: list = []
+        self.fetchrow_results: list = []
+        self.fetch_results: list = []
+
+    async def execute(self, query, *args):
+        self.executed.append((query, args))
+
+    async def fetchval(self, query, *args):
+        return self.fetchval_results.pop(0) if self.fetchval_results else None
+
+    async def fetchrow(self, query, *args):
+        return self.fetchrow_results.pop(0) if self.fetchrow_results else None
+
+    async def fetch(self, query, *args):
+        return self.fetch_results.pop(0) if self.fetch_results else []
+```
+
+por:
+
+```python
+    def __init__(self):
+        self.executed: list[tuple[str, tuple]] = []
+        self.fetched: list[tuple[str, tuple]] = []
+        self.fetchval_results: list = []
+        self.fetchrow_results: list = []
+        self.fetch_results: list = []
+
+    async def execute(self, query, *args):
+        self.executed.append((query, args))
+
+    async def fetchval(self, query, *args):
+        self.fetched.append((query, args))
+        return self.fetchval_results.pop(0) if self.fetchval_results else None
+
+    async def fetchrow(self, query, *args):
+        self.fetched.append((query, args))
+        return self.fetchrow_results.pop(0) if self.fetchrow_results else None
+
+    async def fetch(self, query, *args):
+        self.fetched.append((query, args))
+        return self.fetch_results.pop(0) if self.fetch_results else []
+```
+
+Run the existing suite (`pytest tests/services/test_task_repository.py -v`)
+right after this change to confirm all of Task 5's tests still pass
+unchanged (none of them inspect `.fetched`, so this should be a no-op for
+them).
+
 - [ ] **Step 1: Escribir los tests (fallan: los métodos no existen)**
 
 Añadir a `backend/tests/services/test_task_repository.py`:
@@ -920,7 +981,7 @@ async def test_upsert_schedule_replaces_existing(monkeypatch):
 
     assert schedule_id == 5
     delete_calls = [c for c in conn.executed if "DELETE FROM task_schedules" in c[0]]
-    insert_calls = [c for c in conn.executed if "INSERT INTO task_schedules" in c[0]]
+    insert_calls = [c for c in conn.fetched if "INSERT INTO task_schedules" in c[0]]
     assert len(delete_calls) == 1
     assert len(insert_calls) == 1
     assert insert_calls[0][1] == (1, "0 8 * * *")
@@ -1037,7 +1098,7 @@ async def test_create_execution_returns_id(monkeypatch):
     execution_id = await repo.create_execution(1, "manual")
 
     assert execution_id == 42
-    assert conn.executed[0][1] == (1, "manual")
+    assert conn.fetched[0][1] == (1, "manual")
 
 
 async def test_get_running_execution_returns_id_or_none(monkeypatch):
