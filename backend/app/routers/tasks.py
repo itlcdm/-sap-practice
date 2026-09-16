@@ -29,13 +29,26 @@ async def get_task(task_id: int, repo: TaskRepository = Depends(get_task_reposit
 
 @router.put("/{task_id}", response_model=TaskOut)
 async def update_task(
-    task_id: int, payload: TaskUpdate, repo: TaskRepository = Depends(get_task_repository)
+    task_id: int,
+    payload: TaskUpdate,
+    repo: TaskRepository = Depends(get_task_repository),
+    scheduler: SchedulerService = Depends(get_scheduler_service),
 ):
     existing = await repo.get_task(task_id)
     if existing is None:
         raise HTTPException(status_code=404, detail="Tarea no encontrada")
 
     await repo.update_task(task_id, payload)
+
+    # El scheduler vive en memoria: sin esto una tarea desactivada seguiría
+    # disparando (y enviando correo) hasta reiniciar el backend.
+    if payload.is_active:
+        cron_expression = await repo.get_schedule_cron(task_id)
+        if cron_expression is not None:
+            scheduler.schedule_task(task_id, cron_expression)
+    else:
+        scheduler.unschedule_task(task_id)
+
     return await repo.get_task(task_id)
 
 

@@ -1,11 +1,48 @@
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.schemas.tasks import TaskOut
 from app.services.task_repository import get_task_repository
 from app.services.scheduler_service import get_scheduler_service
 import app.routers.tasks as tasks_router_module
+
+
+def a_task_out(is_active=True):
+    # update_task declares response_model=TaskOut, so repo.get_task has to
+    # return something that actually validates (a bare AsyncMock would not).
+    now = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    return TaskOut(
+        id=1,
+        name="Inventario diario",
+        description=None,
+        connection_name="InventarioDb",
+        mail_to="a@example.com",
+        mail_cc=None,
+        mail_subject_template=None,
+        is_active=is_active,
+        created_at=now,
+        updated_at=now,
+        reports=[],
+    )
+
+
+def a_task_update_payload(is_active):
+    return {
+        "name": "Inventario diario",
+        "connection_name": "InventarioDb",
+        "mail_to": "a@example.com",
+        "is_active": is_active,
+        "reports": [
+            {
+                "stored_procedure": "ALCONSIT",
+                "excel_file_name": "ALCONSIT.xlsx",
+                "sheet_name": "ALCONSIT",
+            }
+        ],
+    }
 
 
 def make_client(repo, scheduler=None):
@@ -39,6 +76,58 @@ def test_get_task_404_when_missing():
     response = client.get("/api/tasks/999")
 
     assert response.status_code == 404
+    next(gen, None)
+
+
+def test_update_task_unschedules_when_deactivated():
+    repo = AsyncMock()
+    repo.get_task.return_value = a_task_out(is_active=False)
+
+    scheduler = MagicMock()
+
+    gen = make_client(repo, scheduler=scheduler)
+    client = next(gen)
+
+    response = client.put("/api/tasks/1", json=a_task_update_payload(is_active=False))
+
+    assert response.status_code == 200
+    scheduler.unschedule_task.assert_called_once_with(1)
+    scheduler.schedule_task.assert_not_called()
+    next(gen, None)
+
+
+def test_update_task_reschedules_when_reactivated_with_existing_schedule():
+    repo = AsyncMock()
+    repo.get_task.return_value = a_task_out(is_active=True)
+    repo.get_schedule_cron.return_value = "0 8 * * *"
+
+    scheduler = MagicMock()
+
+    gen = make_client(repo, scheduler=scheduler)
+    client = next(gen)
+
+    response = client.put("/api/tasks/1", json=a_task_update_payload(is_active=True))
+
+    assert response.status_code == 200
+    scheduler.schedule_task.assert_called_once_with(1, "0 8 * * *")
+    scheduler.unschedule_task.assert_not_called()
+    next(gen, None)
+
+
+def test_update_task_does_not_schedule_when_task_has_no_schedule():
+    repo = AsyncMock()
+    repo.get_task.return_value = a_task_out(is_active=True)
+    repo.get_schedule_cron.return_value = None
+
+    scheduler = MagicMock()
+
+    gen = make_client(repo, scheduler=scheduler)
+    client = next(gen)
+
+    response = client.put("/api/tasks/1", json=a_task_update_payload(is_active=True))
+
+    assert response.status_code == 200
+    scheduler.schedule_task.assert_not_called()
     next(gen, None)
 
 

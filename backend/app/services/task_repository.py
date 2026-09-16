@@ -153,6 +153,13 @@ class TaskRepository:
 
         return schedule_id
 
+    async def get_schedule_cron(self, task_id: int) -> str | None:
+        async with db_service.pool.acquire() as conn:
+            return await conn.fetchval(
+                "SELECT cron_expression FROM task_schedules WHERE task_id = $1",
+                task_id,
+            )
+
     async def delete_schedule(self, task_id: int) -> None:
         async with db_service.pool.acquire() as conn:
             await conn.execute(

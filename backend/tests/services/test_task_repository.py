@@ -214,6 +214,27 @@ async def test_delete_schedule_deletes_by_task_id(monkeypatch):
     assert delete_calls == [("DELETE FROM task_schedules WHERE task_id = $1", (1,))]
 
 
+async def test_get_schedule_cron_returns_expression(monkeypatch):
+    conn = use_fake_pool(monkeypatch)
+    conn.fetchval_results = ["0 8 * * *"]
+
+    repo = TaskRepository()
+    cron_expression = await repo.get_schedule_cron(1)
+
+    assert cron_expression == "0 8 * * *"
+    select_calls = [c for c in conn.fetched if "FROM task_schedules" in c[0]]
+    assert len(select_calls) == 1
+    assert select_calls[0][1] == (1,)
+
+
+async def test_get_schedule_cron_returns_none_when_no_schedule(monkeypatch):
+    use_fake_pool(monkeypatch)
+
+    repo = TaskRepository()
+
+    assert await repo.get_schedule_cron(1) is None
+
+
 async def test_list_active_schedules_joins_task_name(monkeypatch):
     conn = use_fake_pool(monkeypatch)
     conn.fetch_results = [
