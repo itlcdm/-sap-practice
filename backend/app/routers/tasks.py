@@ -43,13 +43,27 @@ async def update_task(
     # El scheduler vive en memoria: sin esto una tarea desactivada seguiría
     # disparando (y enviando correo) hasta reiniciar el backend.
     if payload.is_active:
-        cron_expression = await repo.get_schedule_cron(task_id)
-        if cron_expression is not None:
-            scheduler.schedule_task(task_id, cron_expression)
+        schedule = await repo.get_schedule(task_id)
+        if schedule is not None:
+            scheduler.schedule_task(task_id, **schedule)
     else:
         scheduler.unschedule_task(task_id)
 
     return await repo.get_task(task_id)
+
+
+@router.delete("/{task_id}", status_code=204)
+async def delete_task(
+    task_id: int,
+    repo: TaskRepository = Depends(get_task_repository),
+    scheduler: SchedulerService = Depends(get_scheduler_service),
+):
+    existing = await repo.get_task(task_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="Tarea no encontrada")
+
+    scheduler.unschedule_task(task_id)
+    await repo.delete_task(task_id)
 
 
 @router.post("/{task_id}/schedule", response_model=ScheduleOut)
@@ -63,13 +77,26 @@ async def create_schedule(
     if task is None:
         raise HTTPException(status_code=404, detail="Tarea no encontrada")
 
-    await repo.upsert_schedule(task_id, payload.cron_expression)
-    scheduler.schedule_task(task_id, payload.cron_expression)
+    payload.validar_tipo()
+    await repo.upsert_schedule(
+        task_id,
+        payload.schedule_type,
+        payload.scheduled_at,
+        payload.cron_expression,
+    )
+    scheduler.schedule_task(
+        task_id,
+        payload.schedule_type,
+        payload.scheduled_at,
+        payload.cron_expression,
+    )
 
     return ScheduleOut(
         id=task_id,
         task_id=task_id,
         task_name=task.name,
+        schedule_type=payload.schedule_type,
+        scheduled_at=payload.scheduled_at,
         cron_expression=payload.cron_expression,
         is_active=True,
         next_run_time=scheduler.get_next_run_time(task_id),

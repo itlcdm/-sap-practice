@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 
 from apscheduler.triggers.cron import CronTrigger
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 
 class TaskReportIn(BaseModel):
@@ -60,11 +60,15 @@ class TaskSummary(BaseModel):
 
 
 class ScheduleIn(BaseModel):
-    cron_expression: str
+    schedule_type: Literal["once", "recurring"] = "recurring"
+    scheduled_at: datetime | None = None
+    cron_expression: str | None = None
 
     @field_validator("cron_expression")
     @classmethod
-    def validar_cron_expression(cls, value: str) -> str:
+    def validar_cron_expression(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
         # Se valida con el mismo parser que usa el scheduler
         # (SchedulerService.schedule_task), para que una expresión inválida
         # nunca llegue a persistirse en Postgres: pydantic convierte este
@@ -75,12 +79,29 @@ class ScheduleIn(BaseModel):
             raise ValueError(f"Expresión cron inválida ('{value}'): {exc}") from exc
         return value
 
+    @field_validator("scheduled_at")
+    @classmethod
+    def validar_fecha_futura(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value <= datetime.now(value.tzinfo):
+            raise ValueError("La fecha de ejecución debe estar en el futuro")
+        return value
+
+    @model_validator(mode="after")
+    def validar_tipo(self):
+        if self.schedule_type == "once" and self.scheduled_at is None:
+            raise ValueError("Una ejecución única requiere una fecha")
+        if self.schedule_type == "recurring" and not self.cron_expression:
+            raise ValueError("Una ejecución recurrente requiere una expresión cron")
+        return self
+
 
 class ScheduleOut(BaseModel):
     id: int
     task_id: int
     task_name: str
-    cron_expression: str
+    schedule_type: Literal["once", "recurring"]
+    scheduled_at: datetime | None
+    cron_expression: str | None
     is_active: bool
     next_run_time: datetime | None
 

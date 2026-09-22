@@ -23,7 +23,9 @@ CREATE TABLE IF NOT EXISTS task_reports (
 CREATE TABLE IF NOT EXISTS task_schedules (
     id BIGSERIAL PRIMARY KEY,
     task_id BIGINT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-    cron_expression TEXT NOT NULL,
+    schedule_type TEXT NOT NULL DEFAULT 'recurring' CHECK (schedule_type IN ('once', 'recurring')),
+    scheduled_at TIMESTAMPTZ,
+    cron_expression TEXT,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -64,3 +66,7 @@ CREATE INDEX IF NOT EXISTS idx_execution_logs_execution_id ON execution_logs(exe
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_task_executions_one_running_per_task
 ON task_executions(task_id) WHERE status = 'running';
+
+ALTER TABLE task_schedules ADD COLUMN IF NOT EXISTS schedule_type TEXT NOT NULL DEFAULT 'recurring';
+ALTER TABLE task_schedules ADD COLUMN IF NOT EXISTS scheduled_at TIMESTAMPTZ;
+ALTER TABLE task_schedules ALTER COLUMN cron_expression DROP NOT NULL;

@@ -8,6 +8,11 @@ const routes = [
     component: () => import("../views/DashboardView.vue"),
   },
   {
+    path: "/empresas",
+    name: "companies",
+    component: () => import("../views/CompaniesView.vue"),
+  },
+  {
     path: "/inventario",
     name: "inventory",
     component: () => import("../views/InventoryView.vue"),
@@ -18,15 +23,14 @@ const routes = [
     component: () => import("../views/TaskCatalogView.vue"),
   },
   {
-    path: "/tareas/nueva",
-    name: "task-create",
-    component: () => import("../views/TaskFormView.vue"),
+    path: "/tareas/monedas",
+    name: "currency-tasks",
+    component: () => import("../views/CurrencyTasksView.vue"),
   },
   {
-    path: "/tareas/:id/editar",
-    name: "task-edit",
-    component: () => import("../views/TaskFormView.vue"),
-    props: true,
+    path: "/tareas/llamadas-servicio",
+    name: "service-call-tasks",
+    component: () => import("../views/ServiceCallsView.vue"),
   },
   {
     path: "/tareas/:id/programar",
@@ -48,6 +52,18 @@ const routes = [
     path: "/ejecuciones/historial",
     name: "executions-history",
     component: () => import("../views/ExecutionHistoryView.vue"),
+  },
+  {
+    path: "/ejecuciones/moneda/:id",
+    name: "currency-execution-detail",
+    component: () => import("../views/CurrencyExecutionDetailView.vue"),
+    props: true,
+  },
+  {
+    path: "/ejecuciones/llamadas/:id",
+    name: "service-call-execution-detail",
+    component: () => import("../views/ServiceCallExecutionDetailView.vue"),
+    props: true,
   },
   {
     path: "/ejecuciones/:id",

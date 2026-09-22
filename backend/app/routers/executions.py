@@ -22,6 +22,8 @@ async def list_schedules(
             id=s["task_id"],
             task_id=s["task_id"],
             task_name=s["task_name"],
+            schedule_type=s["schedule_type"],
+            scheduled_at=s["scheduled_at"],
             cron_expression=s["cron_expression"],
             is_active=True,
             next_run_time=scheduler.get_next_run_time(s["task_id"]),

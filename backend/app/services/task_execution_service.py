@@ -5,6 +5,7 @@ import asyncpg
 
 from app.config import settings
 from app.services import excel_export, mail_service, sqlserver_client
+from app.services.sql_connection_repository import sql_connection_repository
 from app.services.task_repository import TaskRepository, task_repository
 
 DEFAULT_SUBJECT_TEMPLATE = "Reportes {task_name} - {timestamp}"
@@ -60,7 +61,7 @@ async def continuar_ejecucion(
     # idx_task_executions_one_running_per_task impediría volver a ejecutar la
     # tarea nunca más.
     try:
-        connection_string = settings.task_sql_connections.get(task.connection_name)
+        connection_string = await sql_connection_repository.get_connection_string(task.connection_name)
         if connection_string is None:
             message = f"Conexión '{task.connection_name}' no configurada"
             await repo.add_execution_log(execution_id, "error", message)

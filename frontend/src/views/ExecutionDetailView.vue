@@ -1,10 +1,22 @@
 <script setup>
-import PlaceholderView from "../components/PlaceholderView.vue";
+import { onMounted, onUnmounted, ref } from "vue";
+import { useRoute } from "vue-router";
+import { downloadReportUrl, getExecution, getExecutionLogs } from "../services/tasksApi";
+import { extractErrorMessage, formatDateTime } from "../utils/format";
+import StatusBadge from "../components/StatusBadge.vue";
+
+const route = useRoute(); const execution = ref(null); const logs = ref([]); const loading = ref(true); const error = ref(""); let timer;
+async function load() { try { execution.value = await getExecution(route.params.id); logs.value = await getExecutionLogs(route.params.id); if (execution.value.status !== "running" && timer) { window.clearInterval(timer); timer = null; } } catch (err) { error.value = extractErrorMessage(err, "No se pudo cargar la ejecución"); } finally { loading.value = false; } }
+onMounted(() => { load(); timer = window.setInterval(load, 5000); });
+onUnmounted(() => { if (timer) window.clearInterval(timer); });
 </script>
 
 <template>
-  <PlaceholderView
-    title="Detalle de ejecución"
-    description="Estado, tiempos y resultado de la ejecución, incluyendo sus logs."
-  />
+  <section class="detail-view"><header class="page-header"><div><p class="eyebrow">EJECUCIÓN #{{ route.params.id }}</p><h1>{{ execution?.task_name || "Detalle de ejecución" }}</h1><p class="subtitle">Estado, reportes generados y registro de actividad.</p></div><router-link class="button secondary" to="/ejecuciones/historial">Volver al historial</router-link></header><p v-if="error" class="alert">{{ error }}</p><p v-if="loading" class="empty-state">Cargando detalle…</p><template v-else-if="execution"><div class="summary-grid"><div class="summary-item"><span>Estado</span><StatusBadge :status="execution.status" /></div><div class="summary-item"><span>Disparador</span><strong>{{ execution.trigger_type === "scheduled" ? "Programada" : "Manual" }}</strong></div><div class="summary-item"><span>Inicio</span><strong>{{ formatDateTime(execution.started_at) }}</strong></div><div class="summary-item"><span>Finalización</span><strong>{{ formatDateTime(execution.finished_at) }}</strong></div></div><p v-if="execution.error_message" class="alert">{{ execution.error_message }}</p><div class="content-grid"><section class="card"><h2>Reportes generados</h2><p v-if="!execution.reports.length" class="empty-state">Todavía no hay reportes generados.</p><ul v-else class="report-list"><li v-for="report in execution.reports" :key="report.id"><div><strong>{{ report.file_name }}</strong><small>{{ report.stored_procedure }} · {{ report.row_count ?? "—" }} filas</small></div><a :href="downloadReportUrl(execution.id, report.id)" target="_blank" rel="noreferrer">Descargar</a></li></ul></section><section class="card"><h2>Logs</h2><p v-if="!logs.length" class="empty-state">Sin logs todavía.</p><ol v-else class="logs"><li v-for="log in logs" :key="log.id"><time>{{ formatDateTime(log.timestamp) }}</time><StatusBadge :status="log.level === 'error' ? 'failed' : log.level === 'warning' ? 'scheduled' : 'active'" /><span>{{ log.message }}</span></li></ol></section></div></template></section>
 </template>
+
+<style scoped>
+.detail-view { display: flex; flex-direction: column; gap: 20px; }.page-header { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; }.eyebrow { margin: 0 0 4px; color: var(--accent); font-size: 11px; letter-spacing: .08em; }h1 { font-size: 24px; margin: 0 0 4px; }.subtitle { color: var(--text); }.summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }.summary-item, .card { background: var(--bg); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); }.summary-item { display: flex; flex-direction: column; gap: 7px; padding: 16px; }.summary-item span { color: var(--text); font-size: 12px; }.summary-item strong { color: var(--text-h); font-size: 14px; }.content-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }.card { padding: 20px; }.card h2 { margin: 0 0 14px; font-size: 17px; }.report-list, .logs { display: flex; flex-direction: column; gap: 10px; padding: 0; margin: 0; list-style: none; }.report-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; background: var(--code-bg); border-radius: 7px; }.report-list strong, .report-list small { display: block; }.report-list strong { color: var(--text-h); font-size: 14px; }.report-list small { color: var(--text); font-size: 12px; }.report-list a { color: var(--accent); font-size: 13px; text-decoration: none; white-space: nowrap; }.logs li { display: grid; grid-template-columns: 120px auto 1fr; align-items: center; gap: 8px; padding-bottom: 9px; border-bottom: 1px solid var(--border); font-size: 13px; }.logs time { color: var(--text); font-size: 11px; }.button { padding: 9px 14px; border-radius: 7px; color: var(--text-h); background: var(--code-bg); border: 1px solid var(--border); text-decoration: none; font-size: 13px; }.alert { padding: 12px 16px; color: #b42318; background: rgba(180,35,24,.08); border-radius: 8px; }.empty-state { color: var(--text); text-align: center; padding: 16px 0; }
+@media (max-width: 800px) { .summary-grid, .content-grid { grid-template-columns: 1fr 1fr; } .logs li { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .summary-grid, .content-grid { grid-template-columns: 1fr; } }
+</style>

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from app.schemas.tasks import (
     ExecutionDetailOut,
     ExecutionLogOut,
@@ -133,7 +135,17 @@ class TaskRepository:
 
                 await self._insert_reports(conn, task_id, data.reports)
 
-    async def upsert_schedule(self, task_id: int, cron_expression: str) -> int:
+    async def delete_task(self, task_id: int) -> None:
+        async with db_service.pool.acquire() as conn:
+            await conn.execute("DELETE FROM tasks WHERE id = $1", task_id)
+
+    async def upsert_schedule(
+        self,
+        task_id: int,
+        schedule_type: str,
+        scheduled_at: datetime | None,
+        cron_expression: str | None,
+    ) -> int:
         async with db_service.pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
@@ -143,22 +155,30 @@ class TaskRepository:
 
                 schedule_id = await conn.fetchval(
                     """
-                    INSERT INTO task_schedules (task_id, cron_expression, is_active)
-                    VALUES ($1, $2, TRUE)
+                    INSERT INTO task_schedules (
+                        task_id, schedule_type, scheduled_at, cron_expression, is_active
+                    )
+                    VALUES ($1, $2, $3, $4, TRUE)
                     RETURNING id
                     """,
                     task_id,
+                    schedule_type,
+                    scheduled_at,
                     cron_expression,
                 )
 
         return schedule_id
 
-    async def get_schedule_cron(self, task_id: int) -> str | None:
+    async def get_schedule(self, task_id: int) -> dict | None:
         async with db_service.pool.acquire() as conn:
-            return await conn.fetchval(
-                "SELECT cron_expression FROM task_schedules WHERE task_id = $1",
+            row = await conn.fetchrow(
+                """
+                SELECT schedule_type, scheduled_at, cron_expression
+                FROM task_schedules WHERE task_id = $1 AND is_active
+                """,
                 task_id,
             )
+        return dict(row) if row else None
 
     async def delete_schedule(self, task_id: int) -> None:
         async with db_service.pool.acquire() as conn:
@@ -171,7 +191,8 @@ class TaskRepository:
         async with db_service.pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT s.task_id AS task_id, t.name AS task_name, s.cron_expression AS cron_expression
+                  SELECT s.task_id AS task_id, t.name AS task_name,
+                      s.schedule_type, s.scheduled_at, s.cron_expression
                 FROM task_schedules s
                 JOIN tasks t ON t.id = s.task_id
                 WHERE s.is_active AND t.is_active
@@ -250,6 +271,8 @@ class TaskRepository:
             )
 
     async def list_executions(self, status: str | None, limit: int, offset: int) -> list[ExecutionOut]:
+        status_filter = "history" if status == "history" else status
+
         async with db_service.pool.acquire() as conn:
             rows = await conn.fetch(
                 """
@@ -257,11 +280,15 @@ class TaskRepository:
                        e.started_at, e.finished_at, e.error_message
                 FROM task_executions e
                 JOIN tasks t ON t.id = e.task_id
-                WHERE ($1::text IS NULL OR e.status = $1)
+                WHERE (
+                    $1::text IS NULL
+                    OR ($1::text = 'history' AND e.status IN ('success', 'failed'))
+                    OR ($1::text <> 'history' AND e.status = $1)
+                )
                 ORDER BY e.started_at DESC
                 LIMIT $2 OFFSET $3
                 """,
-                status,
+                status_filter,
                 limit,
                 offset,
             )

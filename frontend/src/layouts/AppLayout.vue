@@ -1,13 +1,25 @@
 <script setup>
+import { reactive } from "vue";
+import { useRoute } from "vue-router";
 import { useAuth } from "../composables/useAuth";
 import Icon from "../components/Icon.vue";
 
 const { logout } = useAuth();
+const route = useRoute();
 
 const NAV_ITEMS = [
   { to: "/dashboard", label: "Dashboard", icon: "dashboard" },
-  { to: "/inventario", label: "Consulta de inventario", icon: "inventory" },
-  { to: "/tareas", label: "Catálogo de tareas", icon: "catalog" },
+  { to: "/empresas", label: "Empresas", icon: "company" },
+  {
+    label: "Gestión de Tareas",
+    icon: "folder",
+    children: [
+      { to: "/inventario", label: "Consulta de inventario", icon: "inventory" },
+      { to: "/tareas", label: "Reporteria Automatica", icon: "catalog" },
+      { to: "/tareas/monedas", label: "Cambio de monedas", icon: "currency" },
+      { to: "/tareas/llamadas-servicio", label: "Llamada de Servicios", icon: "call" },
+    ],
+  },
   { to: "/programaciones", label: "Tareas programadas", icon: "schedule" },
   {
     to: "/ejecuciones/en-curso",
@@ -27,6 +39,17 @@ const NAV_ITEMS = [
     dividerBefore: true,
   },
 ];
+
+const expandedGroups = reactive({});
+for (const item of NAV_ITEMS) {
+  if (item.children) {
+    expandedGroups[item.label] = item.children.some((child) => route.path.startsWith(child.to));
+  }
+}
+
+function toggleGroup(label) {
+  expandedGroups[label] = !expandedGroups[label];
+}
 </script>
 
 <template>
@@ -38,10 +61,29 @@ const NAV_ITEMS = [
       </div>
 
       <nav class="nav">
-        <template v-for="item in NAV_ITEMS" :key="item.to">
+        <template v-for="item in NAV_ITEMS" :key="item.label || item.to">
           <div v-if="item.dividerBefore" class="nav-divider" />
 
-          <router-link :to="item.to" class="nav-link">
+          <template v-if="item.children">
+            <button
+              type="button"
+              class="nav-link nav-group-toggle"
+              :class="{ 'group-active': item.children.some((child) => route.path.startsWith(child.to)) }"
+              @click="toggleGroup(item.label)"
+            >
+              <Icon :name="item.icon" />
+              <span>{{ item.label }}</span>
+              <Icon name="chevron-down" class="chevron" :class="{ open: expandedGroups[item.label] }" />
+            </button>
+            <div v-show="expandedGroups[item.label]" class="nav-subgroup">
+              <router-link v-for="child in item.children" :key="child.to" :to="child.to" class="nav-link nav-sublink">
+                <Icon :name="child.icon" />
+                <span>{{ child.label }}</span>
+              </router-link>
+            </div>
+          </template>
+
+          <router-link v-else :to="item.to" class="nav-link">
             <Icon :name="item.icon" />
             <span>{{ item.label }}</span>
           </router-link>
@@ -177,6 +219,41 @@ const NAV_ITEMS = [
   background: var(--sb-accent);
 }
 
+.nav-group-toggle {
+  width: 100%;
+  border: none;
+  background: transparent;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.nav-group-toggle.group-active {
+  color: var(--sb-text-strong);
+}
+
+.chevron {
+  margin-left: auto;
+  width: 14px;
+  height: 14px;
+  opacity: 0.6;
+  transition: transform 0.15s;
+}
+
+.chevron.open {
+  transform: rotate(180deg);
+}
+
+.nav-subgroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 18px;
+}
+
+.nav-sublink {
+  font-size: 13px;
+}
+
 .logout-button {
   display: flex;
   align-items: center;
@@ -203,7 +280,7 @@ const NAV_ITEMS = [
   flex: 1;
   min-width: 0;
   overflow-y: auto;
-  padding: 32px;
+  padding: 36px 42px 48px;
   box-sizing: border-box;
   text-align: left;
 }
@@ -241,7 +318,7 @@ const NAV_ITEMS = [
   }
 
   .content {
-    padding: 20px;
+    padding: 24px 20px 32px;
   }
 }
 </style>
