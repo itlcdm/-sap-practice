@@ -1,1 +1,13 @@
-[phases.setup] aptPkgs = ["unixodbc", "unixodbc-dev", "odbcinst", "curl", "gnupg"] [phases.install] cmds = [ "curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -", "curl https://packages.microsoft.com/config/debian/12/prod.list > /etc/apt/sources.list.d/mssql-release.list", "apt-get update", "ACCEPT_EULA=Y apt-get install -y msodbcsql17", ". /opt/venv/bin/activate && pip install -r requirements.txt" ]
+# Instala paquetes de sistema (apt) necesarios para compilar/usar pyodbc
+[phases.setup]
+aptPkgs = ["unixodbc", "unixodbc-dev", "odbcinst", "curl", "gnupg"]
+
+# Instala el driver ODBC 17 de Microsoft para SQL Server, y luego los paquetes de Python
+[phases.install]
+cmds = [
+  "curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add -",
+  "curl https://packages.microsoft.com/config/debian/12/prod.list > /etc/apt/sources.list.d/mssql-release.list",
+  "apt-get update",
+  "ACCEPT_EULA=Y apt-get install -y msodbcsql17",
+  ". /opt/venv/bin/activate && pip install -r requirements.txt"
+]
