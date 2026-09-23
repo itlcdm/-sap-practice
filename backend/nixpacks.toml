@@ -1,8 +1,9 @@
-# Instala paquetes de sistema (apt) necesarios para compilar/usar pyodbc
+ # Instala paquetes de sistema (apt) necesarios para compilar/usar pyodbc
 [phases.setup]
 aptPkgs = ["unixodbc", "unixodbc-dev", "odbcinst", "curl", "gnupg"]
 
-# Instala el driver ODBC 17 de Microsoft para SQL Server, y luego los paquetes de Python
+# Instala el driver ODBC 17 de Microsoft para SQL Server, crea el entorno virtual,
+# y luego instala los paquetes de Python
 [phases.install]
 cmds = [
   "curl -sSL -O https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb",
@@ -10,5 +11,6 @@ cmds = [
   "rm packages-microsoft-prod.deb",
   "apt-get update",
   "ACCEPT_EULA=Y apt-get install -y msodbcsql17",
+  "python -m venv --copies /opt/venv",
   ". /opt/venv/bin/activate && pip install -r requirements.txt"
 ]
