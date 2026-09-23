@@ -2,13 +2,18 @@ FROM python:3.12-slim-bookworm
 
 WORKDIR /app
 
-# Instala unixODBC y herramientas necesarias para agregar el repo de Microsoft
+# Instala unixODBC, tzdata y herramientas necesarias para agregar el repo de Microsoft
 RUN apt-get update && apt-get install -y --no-install-recommends \
     unixodbc \
     unixodbc-dev \
     curl \
     gnupg \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
+
+# Configura la zona horaria del contenedor
+ENV TZ=America/Panama
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # Instala el driver ODBC 17 de Microsoft para SQL Server
 RUN curl -sSL -O https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb \
