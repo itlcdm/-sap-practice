@@ -11,9 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     tzdata \
     && rm -rf /var/lib/apt/lists/*
 
-# Configura la zona horaria del contenedor (solo en build, no queda como env var en runtime)
-ARG TZ=America/Panama
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+# Configura la zona horaria del contenedor (sin ARG ni ENV, para que no quede como variable de entorno en runtime)
+RUN ln -snf /usr/share/zoneinfo/America/Panama /etc/localtime && echo "America/Panama" > /etc/timezone
 
 # Instala el driver ODBC 17 de Microsoft para SQL Server
 RUN curl -sSL -O https://packages.microsoft.com/config/debian/12/packages-microsoft-prod.deb \
