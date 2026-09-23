@@ -1,8 +1,6 @@
-# python3, gcc y unixODBC se instalan vía Nix (para que el Python de Nix vea unixODBC
-# automáticamente); el resto son herramientas de apt necesarias para el driver de Microsoft
+# Instala paquetes de sistema (apt) necesarios para compilar/usar pyodbc
 [phases.setup]
-nixPkgs = ["python3", "gcc", "unixODBC"]
-aptPkgs = ["unixodbc-dev", "odbcinst", "curl", "gnupg"]
+aptPkgs = ["unixodbc", "unixodbc-dev", "odbcinst", "curl", "gnupg"]
 
 # Instala el driver ODBC 17 de Microsoft para SQL Server, crea el entorno virtual,
 # y luego instala los paquetes de Python
